@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "windows-terminal-launcher": {
+      "commandName": "Project",
+      "commandLineArgs": "--directory=\"c:\\\\\""
+    }
+  }
+}
