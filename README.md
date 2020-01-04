@@ -6,7 +6,7 @@ Launcher for [Windows Terminal](https://github.com/microsoft/terminal), allows s
 
 **To install `shift + right click` context menu shortcuts** to open each of your configured profiles in current directory run:
 ```cmd
-windows-terminal-launcher.exe --install
+windows-terminal-launcher.exe --install [--format="Run %P Terminal Here"]
 ```
 
 _Context menu shortcuts will use the profile name and profile icon from settings_

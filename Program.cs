@@ -7,13 +7,10 @@ using McMaster.Extensions.CommandLineUtils;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 
-// TODO:
-// 1) [ ] Replace Sleep(...) with detecting when Terminal process has started
-// 2) [x] Make sure to write full profiles.json after modifications, not just parts that are modeled
-// 3) [x] Make sure profile.json isn't backed up while modified, if multiple isntances are baing run at nearly the same time
-
 namespace windows_terminal_launcher {
   class Program {
+
+    #region Constructor(s)
 
     /// <summary>
     /// Program entry point
@@ -21,37 +18,54 @@ namespace windows_terminal_launcher {
     /// <param name="args">Runtime arguments</param>
     static void Main (string[] args) => CommandLineApplication.Execute<Program>(args);
 
+    #endregion
+
+    #region Arguments
+
+    // Won't work 'cos not a console application (just here in case this changes)
     [Option(
       CommandOptionType.SingleOrNoValue,
-      ShortName = "d",
-      LongName = "directory",
-      Description = "Directory path to be started in"
+      Template = "-d|--directory",
+      Description = "Directory path to be started in",
+      ShowInHelpText = true
     )]
     public (bool hasValue, string value) directory { get; }
     
     [Option(
       CommandOptionType.SingleOrNoValue,
-      ShortName = "p",
-      LongName = "profile",
-      Description = "Profile to start with"
+      Template = "-p|--profile",
+      Description = "Profile to start with",
+      ShowInHelpText = true
     )]
     public (bool hasValue, string value) profile { get; }
 
     [Option(
       CommandOptionType.NoValue,
-      ShortName = "i",
-      LongName = "install",
-      Description = "Installs context menu shortcuts"
+      Template = "-i|--install",
+      Description = "Installs (shift + right click) context-menu shortcuts for all profiles",
+      ShowInHelpText = true
     )]
     public bool install { get; }
 
     [Option(
+      CommandOptionType.SingleOrNoValue,
+      Template = "-f|--format",
+      Description = "Format of installed (shift + right click) context-menu shortcuts' names using '%P' as profile name placeholder, for example: 'Run %P Here'",
+      ShowInHelpText = true
+    )]
+    public (bool hasValue, string value) format { get; }
+
+    [Option(
       CommandOptionType.NoValue,
-      ShortName = "u",
-      LongName = "uninstall",
-      Description = "Uninstalls context menu shortcuts"
+      Template = "-u|--uninstall",
+      Description = "Uninstalls (shift + right click) context-menu shortcuts for all profiles",
+      ShowInHelpText = true
     )]
     public bool uninstall { get; }
+
+    #endregion
+
+    #region Properties
 
     private RegistryKey registryRootKey = Registry.CurrentUser;
     private string[] registryPaths = new string[] {
@@ -61,8 +75,24 @@ namespace windows_terminal_launcher {
       @"Software\Classes\Directory\Background\shell"
     };
 
-  private void OnExecute () {
-      // Check mode
+    #endregion
+
+    #region Entry point
+
+    private void OnExecute () {
+
+      // Check arguments
+      if (this.install && (this.directory.hasValue || this.profile.hasValue)) {
+        throw new Exception("--directory and --profile are not allowed when running --install!");
+      }
+      if (this.uninstall && (this.directory.hasValue || this.profile.hasValue || this.format.hasValue)) {
+        throw new Exception("--directory, --profile and --format are not allowed when running --uninstall!");
+      }
+      if (this.format.hasValue && !this.install) {
+        throw new Exception("--format can only be used when running --install!");
+      }
+
+      // Check and run action
       if (this.install) {
         // Install context menu shortcuts
         this.InstallContextMenuShortcuts();
@@ -73,24 +103,37 @@ namespace windows_terminal_launcher {
         // Start windows terminal
         this.StartWindowsTerminal();
       }
+
     }
 
+    #endregion 
+
+    #region Action implementation
+    
     private void InstallContextMenuShortcuts () {
+      // Uninstall previous shortcuts (if any exist)
+      this.UninstallContextMenuShortcuts();
+      // (Re)Install shortcuts
       this.ExecuteWithConfiguration((config, path) => {
 
         // For each profile ...
-        foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
-          // ... if not hidden
-          if (!profile.hidden) {
-            // ... write to registry
-            foreach (string keyroot in this.registryPaths) {
-              string keypath = String.Format(@"{0}\$ {1}", keyroot, profile.name);
+        foreach (string keyroot in this.registryPaths) {
+          foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
+            // ... if not hidden
+            if (!profile.hidden) {
+              // ... write to registry
+              string format = String.Format((this.format.hasValue ? this.format.value.Replace("%P", "{0}").Replace("%p", "{0}") : "{0} Terminal Here"), profile.name);
+              string keypath = String.Format(@"{0}\{1}", keyroot, format);
               RegistryKey key = this.registryRootKey.CreateSubKey(keypath);
               string commandpath = String.Format(@"{0}\command", keypath);
               RegistryKey command = this.registryRootKey.CreateSubKey(commandpath);
-              command.SetValue("",          String.Format("{0} --directory=\"%V\" --profile=\"{1}\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name));
-              command.SetValue("Position",  @"Bottom");
-              command.SetValue("Extended",  @"");
+              string wtlpath = String.Format(@"{0}\windows-terminal-launcher", keypath);
+              RegistryKey wtl = this.registryRootKey.CreateSubKey(wtlpath);
+
+              command.SetValue("", String.Format("{0} --directory=\"%V\" --profile=\"{1}\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name));
+              command.SetValue("Position", @"Bottom");
+              command.SetValue("Extended", @"");
+
               if (profile.icon != null) { key.SetValue("icon", profile.icon); }
               command.Close();
               key.Close();
@@ -100,19 +143,28 @@ namespace windows_terminal_launcher {
 
       });
     }
-
+        
     private void UninstallContextMenuShortcuts () {
       this.ExecuteWithConfiguration((config, path) => {
 
-        // For each profile ...
-        foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
-          // ... if not hidden
-          if (!profile.hidden) {
-            // ... write to registry
-            foreach (string keyroot in this.registryPaths) {
-              string keypath = String.Format(@"{0}\$ {1}", keyroot, profile.name);
-              if (this.registryRootKey.OpenSubKey(keypath) != null) {
-                this.registryRootKey.DeleteSubKeyTree(keypath);
+        // For each registry root path
+        foreach (string keyroot in this.registryPaths) {
+          // ... for each profile ...
+          foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
+            // ... if not hidden
+            if (!profile.hidden) {
+              // ... clear from registry
+              string keyspath = String.Format(keyroot);
+              RegistryKey key = this.registryRootKey.OpenSubKey(keyspath);
+              if (key != null) {
+                foreach (string keyname in key.GetSubKeyNames()) {
+                  string keypath = String.Format(@"{0}\{1}", keyroot, keyname);
+                  string wtlpath = String.Format(@"{0}\windows-terminal-launcher", keypath, keyname);
+                  RegistryKey wtl = this.registryRootKey.OpenSubKey(wtlpath);
+                  if (wtl != null) {
+                    this.registryRootKey.DeleteSubKeyTree(keypath);
+                  }
+                }
               }
             }
           }
@@ -209,6 +261,8 @@ namespace windows_terminal_launcher {
       File.Delete(configBackupPath);
 
     }
+
+    #endregion
 
   }
 }
