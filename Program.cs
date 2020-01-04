@@ -2,15 +2,15 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.Win32;
+using Newtonsoft.Json;
 
 // TODO:
-// 1) Replace Sleep(...) with detecting when Terminal process has started
-// 2) Make sure to write full profiles.json after modifications, not just parts that are modeled
-// 3) Make sure profile.json isn't backed up while modified, if multiple isntances are baing run at nearly the same time
+// 1) [ ] Replace Sleep(...) with detecting when Terminal process has started
+// 2) [x] Make sure to write full profiles.json after modifications, not just parts that are modeled
+// 3) [x] Make sure profile.json isn't backed up while modified, if multiple isntances are baing run at nearly the same time
 
 namespace windows_terminal_launcher {
   class Program {
@@ -135,9 +135,7 @@ namespace windows_terminal_launcher {
         }
 
         // Store updated configuration
-        string configUpdatedRaw = JsonSerializer.Serialize(config, new JsonSerializerOptions() {
-          WriteIndented = true
-        });
+        string configUpdatedRaw = JsonConvert.SerializeObject(config, Formatting.Indented);
         File.WriteAllText(path, configUpdatedRaw);
 
         // Start terminal process
@@ -153,8 +151,13 @@ namespace windows_terminal_launcher {
           process.StartInfo.FileName = "wt.exe";
           process.StartInfo.WorkingDirectory = workingDir;
           process.Start();
-          // ... wait until process started (TODO: Replace sleep!!!)
-          Thread.Sleep(2000);
+          // ... wait until process started
+          DateTime waitStart = DateTime.Now;
+          while (string.IsNullOrEmpty(process.MainWindowTitle) && ((DateTime.Now - waitStart).TotalSeconds < 10)) {
+            Thread.Sleep(100);
+            process.Refresh();
+          }
+
         } catch (Exception ex) {
           Console.WriteLine("Failed running Windwos Terminal - is it installed on your system?");
         }
@@ -185,14 +188,21 @@ namespace windows_terminal_launcher {
       }
 
       // Read and backup configuration
-      string configRaw = File.ReadAllText(configPath);
+      string configRaw;
+      WindowsTerminalConfiguration config = null;
+      // Read until an unmodified version of config is read
+      do {
+        // If already read, wait a bit
+        if (config != null) { Thread.Sleep(100); }
+        // Read config
+        configRaw = File.ReadAllText(configPath);
+        config = JsonConvert.DeserializeObject<WindowsTerminalConfiguration>(configRaw);
+      } while (config.wintermRunnerModified);
+      // Write backup file
       if (!File.Exists(configBackupPath)) { File.WriteAllText(configBackupPath, configRaw); }
-      WindowsTerminalConfiguration config = JsonSerializer.Deserialize<WindowsTerminalConfiguration>(configRaw);
 
       // Execute action
-      try {
-        action(config, configPath);
-      } catch (Exception ex) { }
+      try { action(config, configPath); } catch (Exception ex) { }
 
       // Revert configuration and clear backup
       File.WriteAllText(configPath, configRaw);
