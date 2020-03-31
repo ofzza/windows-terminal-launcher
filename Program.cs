@@ -30,7 +30,7 @@ namespace windows_terminal_launcher {
       ShowInHelpText = true
     )]
     public (bool hasValue, string value) directory { get; }
-    
+
     [Option(
       CommandOptionType.SingleOrNoValue,
       Template = "-p|--profile",
@@ -42,7 +42,7 @@ namespace windows_terminal_launcher {
     [Option(
       CommandOptionType.NoValue,
       Template = "-i|--install",
-      Description = "Installs (shift + right click) context-menu shortcuts for all profiles",
+      Description = "Installs context-menu shortcuts for all profiles",
       ShowInHelpText = true
     )]
     public bool install { get; }
@@ -50,7 +50,7 @@ namespace windows_terminal_launcher {
     [Option(
       CommandOptionType.SingleOrNoValue,
       Template = "-f|--format",
-      Description = "Format of installed (shift + right click) context-menu shortcuts' names using '%P' as profile name placeholder, for example: 'Run %P Here'",
+      Description = "Format context-menu shortcuts' names using '%P' as profile name placeholder, for example: 'Open %P Terminal Here'",
       ShowInHelpText = true
     )]
     public (bool hasValue, string value) format { get; }
@@ -122,7 +122,7 @@ namespace windows_terminal_launcher {
             // ... if not hidden
             if (!profile.hidden) {
               // ... write to registry
-              string format = String.Format((this.format.hasValue ? this.format.value.Replace("%P", "{0}").Replace("%p", "{0}") : "{0} Terminal Here"), profile.name);
+              string format = String.Format((this.format.hasValue ? this.format.value.Replace("%P", "{0}").Replace("%p", "{0}") : "Open {0} Terminal Here"), profile.name);
               string keypath = String.Format(@"{0}\{1}", keyroot, format);
               RegistryKey key = this.registryRootKey.CreateSubKey(keypath);
               string commandpath = String.Format(@"{0}\command", keypath);
@@ -130,7 +130,7 @@ namespace windows_terminal_launcher {
               string wtlpath = String.Format(@"{0}\windows-terminal-launcher", keypath);
               RegistryKey wtl = this.registryRootKey.CreateSubKey(wtlpath);
 
-              command.SetValue("", String.Format("{0} --directory=\"%V\" --profile=\"{1}\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name));
+              command.SetValue("", String.Format("{0} --profile=\"{1}\" --directory=\"%V\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name));
               command.SetValue("Position", @"Bottom");
               command.SetValue("Extended", @"");
 
@@ -176,39 +176,25 @@ namespace windows_terminal_launcher {
     private void StartWindowsTerminal () {
       this.ExecuteWithConfiguration((config, path) => {
 
-        // Update configuration's selected profile
-        if (this.profile.hasValue) {
-          WindowsTerminalConfigurationProfile profile = (new List<WindowsTerminalConfigurationProfile>(config.profiles))
-            .Find(p => (p.guid.ToLower() == this.profile.value.ToLower()) || (p.name.ToLower() == this.profile.value.ToLower()));
-          if (profile != null) {
-            profile.startingDirectory = "%__CD__%";
-            config.globals.defaultProfile = profile.guid;
-          }
-        }
-
-        // Store updated configuration
-        string configUpdatedRaw = JsonConvert.SerializeObject(config, Formatting.Indented);
-        File.WriteAllText(path, configUpdatedRaw);
-
         // Start terminal process
         try {
           // Check if passed working directory
           string workingDir = Environment.CurrentDirectory;
           if (this.directory.hasValue) {
-            FileAttributes attr = File.GetAttributes(this.directory.value);
-            workingDir = ((attr & FileAttributes.Directory) == FileAttributes.Directory ? this.directory.value : Path.GetDirectoryName(this.directory.value));
+            string escapedDirectoryValue = (this.directory.value.EndsWith("\"") ? this.directory.value.Substring(0, this.directory.value.Length - 1) : this.directory.value);
+            FileAttributes attr = File.GetAttributes(escapedDirectoryValue);
+            workingDir = ((attr & FileAttributes.Directory) == FileAttributes.Directory ? escapedDirectoryValue : Path.GetDirectoryName(escapedDirectoryValue));
           }
           // Start process ...
           var process = new Process();
           process.StartInfo.FileName = "wt.exe";
+          process.StartInfo.Arguments = String.Format(
+            "{0} {1}",
+            String.Format("-d \"{0}\"", workingDir),
+            (this.profile.hasValue ? String.Format("-p \"{0}\"", this.profile.value) : "")
+          );
           process.StartInfo.WorkingDirectory = workingDir;
           process.Start();
-          // ... wait until process started
-          DateTime waitStart = DateTime.Now;
-          while (string.IsNullOrEmpty(process.MainWindowTitle) && ((DateTime.Now - waitStart).TotalSeconds < 10)) {
-            Thread.Sleep(100);
-            process.Refresh();
-          }
 
         } catch (Exception ex) {
           Console.WriteLine("Failed running Windwos Terminal - is it installed on your system?");
@@ -233,32 +219,17 @@ namespace windows_terminal_launcher {
         return;
       }
 
-      // Check if backup configuration left from last time
-      if (File.Exists(configBackupPath)) {
-        File.WriteAllText(configPath, File.ReadAllText(configBackupPath));
-        File.Delete(configBackupPath);
-      }
-
       // Read and backup configuration
       string configRaw;
       WindowsTerminalConfiguration config = null;
       // Read until an unmodified version of config is read
-      do {
-        // If already read, wait a bit
-        if (config != null) { Thread.Sleep(100); }
-        // Read config
-        configRaw = File.ReadAllText(configPath);
-        config = JsonConvert.DeserializeObject<WindowsTerminalConfiguration>(configRaw);
-      } while (config.wintermRunnerModified);
+      configRaw = File.ReadAllText(configPath);
+      config = JsonConvert.DeserializeObject<WindowsTerminalConfiguration>(configRaw);
       // Write backup file
       if (!File.Exists(configBackupPath)) { File.WriteAllText(configBackupPath, configRaw); }
 
       // Execute action
       try { action(config, configPath); } catch (Exception ex) { }
-
-      // Revert configuration and clear backup
-      File.WriteAllText(configPath, configRaw);
-      File.Delete(configBackupPath);
 
     }
 
