@@ -8,6 +8,12 @@ using Microsoft.Win32;
 using Newtonsoft.Json;
 
 namespace windows_terminal_launcher {
+
+  [HelpOption(
+    ShortName = "h",
+    LongName = "help",
+    Description = "Easy way of adding and removing Windows Explorer context menu entries for launching Windows Terminal profiles"
+  )]
   class Program {
 
     #region Constructor(s)
@@ -22,44 +28,43 @@ namespace windows_terminal_launcher {
 
     #region Arguments
 
-    // Won't work 'cos not a console application (just here in case this changes)
     [Option(
       CommandOptionType.SingleOrNoValue,
-      Template = "-d|--directory",
-      Description = "Directory path to be started in",
-      ShowInHelpText = true
+      ShortName = "d",
+      LongName = "directory",
+      Description = "Directory path to be started in"
     )]
     public (bool hasValue, string value) directory { get; }
 
     [Option(
-      CommandOptionType.SingleOrNoValue,
-      Template = "-p|--profile",
-      Description = "Profile to start with",
-      ShowInHelpText = true
+      CommandOptionType.MultipleValue,
+      ShortName = "p",
+      LongName = "profile",
+      Description = "Profile to start with, or when used with --install profiles to install context-menu shortcuts for"
     )]
-    public (bool hasValue, string value) profile { get; }
+    public string[] profile { get; }
 
     [Option(
       CommandOptionType.NoValue,
-      Template = "-i|--install",
-      Description = "Installs context-menu shortcuts for all profiles",
-      ShowInHelpText = true
+      ShortName = "i",
+      LongName = "install",
+      Description = "Installs context-menu shortcuts for all profiles, or profiles specified using --profile"
     )]
     public bool install { get; }
 
     [Option(
       CommandOptionType.SingleOrNoValue,
-      Template = "-f|--format",
-      Description = "Format context-menu shortcuts' names using '%P' as profile name placeholder, for example: 'Open %P Terminal Here'",
-      ShowInHelpText = true
+      ShortName = "f",
+      LongName = "format",
+      Description = "Format context-menu shortcuts' names using '%P' as profile name placeholder, for example: 'Open %P Terminal Here'"
     )]
     public (bool hasValue, string value) format { get; }
 
     [Option(
       CommandOptionType.NoValue,
-      Template = "-u|--uninstall",
-      Description = "Uninstalls (shift + right click) context-menu shortcuts for all profiles",
-      ShowInHelpText = true
+      ShortName = "u",
+      LongName = "uninstall",
+      Description = "Uninstalls context-menu shortcuts for all profiles"
     )]
     public bool uninstall { get; }
 
@@ -82,24 +87,23 @@ namespace windows_terminal_launcher {
     private void OnExecute () {
 
       // Check arguments
-      if (this.install && (this.directory.hasValue || this.profile.hasValue)) {
-        throw new Exception("--directory and --profile are not allowed when running --install!");
-      }
-      if (this.uninstall && (this.directory.hasValue || this.profile.hasValue || this.format.hasValue)) {
-        throw new Exception("--directory, --profile and --format are not allowed when running --uninstall!");
+      if (this.directory.hasValue && (this.uninstall || this.install)) {
+        throw new Exception("--directory can not be used when running --install or --uninstall!");
       }
       if (this.format.hasValue && !this.install) {
         throw new Exception("--format can only be used when running --install!");
       }
 
       // Check and run action
+      if (this.uninstall) {
+        // Uninstall context menu shortcuts
+        this.UninstallContextMenuShortcuts();
+      }
       if (this.install) {
         // Install context menu shortcuts
         this.InstallContextMenuShortcuts();
-      } else if (this.uninstall) {
-        // Uninstall context menu shortcuts
-        this.UninstallContextMenuShortcuts();
-      } else {
+      }
+      if (!this.uninstall && !this.install) {
         // Start windows terminal
         this.StartWindowsTerminal();
       }
@@ -119,8 +123,10 @@ namespace windows_terminal_launcher {
         // For each profile ...
         foreach (string keyroot in this.registryPaths) {
           foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
-            // ... if not hidden
-            if (!profile.hidden) {
+            bool matchedName = (Array.Find<string>(this.profile, (name) => (name == profile.name)) != null);
+            bool matchedGuid = (Array.Find<string>(this.profile, (name) => (name == profile.guid)) != null);
+            // ... if not hidden no one profile selected or profile matches by name or GUID
+            if ((!profile.hidden && (this.profile.Length == 0)) || matchedName || matchedGuid) {
               // ... write to registry
               string format = String.Format((this.format.hasValue ? this.format.value.Replace("%P", "{0}").Replace("%p", "{0}") : "Open {0} Terminal Here"), profile.name);
               string keypath = String.Format(@"{0}\{1}", keyroot, format);
@@ -191,7 +197,7 @@ namespace windows_terminal_launcher {
           process.StartInfo.Arguments = String.Format(
             "{0} {1}",
             String.Format("-d \"{0}\"", workingDir),
-            (this.profile.hasValue ? String.Format("-p \"{0}\"", this.profile.value) : "")
+            ((this.profile.Length > 0) ? String.Format("-p \"{0}\"", this.profile[0]) : "")
           );
           process.StartInfo.WorkingDirectory = workingDir;
           process.Start();
