@@ -6,14 +6,14 @@ using System.Text;
 
 namespace windows_terminal_launcher {
   public class WindowsTerminalConfiguration {
-    public bool wintermRunnerModified { get; set; } = false;
-    public WindowsTerminalConfigurationGlobals globals { get; set; }
-    public WindowsTerminalConfigurationProfile[] profiles { get; set; }
+    public string defaultProfile { get; set; }
+    public WindowsTerminalConfigurationProfiles profiles { get; set; }
     [JsonExtensionData]
     private IDictionary<string, JToken> _extraStuff;
-  }
-  public class WindowsTerminalConfigurationGlobals {
-    public string defaultProfile { get; set; }
+  }  
+  public class WindowsTerminalConfigurationProfiles {
+    public WindowsTerminalConfigurationProfile defaults { get; set; }
+    public WindowsTerminalConfigurationProfile[] list { get; set; }
     [JsonExtensionData]
     private IDictionary<string, JToken> _extraStuff;
   }

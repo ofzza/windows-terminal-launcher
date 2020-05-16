@@ -122,7 +122,7 @@ namespace windows_terminal_launcher {
 
         // For each profile ...
         foreach (string keyroot in this.registryPaths) {
-          foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
+          foreach (WindowsTerminalConfigurationProfile profile in config.profiles.list) {
             bool matchedName = (Array.Find<string>(this.profile, (name) => (name == profile.name)) != null);
             bool matchedGuid = (Array.Find<string>(this.profile, (name) => (name == profile.guid)) != null);
             // ... if not hidden no one profile selected or profile matches by name or GUID
@@ -156,7 +156,7 @@ namespace windows_terminal_launcher {
         // For each registry root path
         foreach (string keyroot in this.registryPaths) {
           // ... for each profile ...
-          foreach (WindowsTerminalConfigurationProfile profile in config.profiles) {
+          foreach (WindowsTerminalConfigurationProfile profile in config.profiles.list) {
             // ... if not hidden
             if (!profile.hidden) {
               // ... clear from registry
@@ -218,8 +218,8 @@ namespace windows_terminal_launcher {
         Console.WriteLine("Couldn't find Windows Terminal configuration file!");
         return;
       }
-      string configPath = Path.Combine(path, @"LocalState\profiles.json");
-      string configBackupPath = Path.Combine(path, @"LocalState\profiles.json.bak");
+      string configPath = Path.Combine(path, @"LocalState\settings.json");
+      string configBackupPath = Path.Combine(path, @"LocalState\settings.json.bak");
       if (!File.Exists(configPath)) {
         Console.WriteLine("Couldn't find Windows Terminal configuration file!");
         return;
