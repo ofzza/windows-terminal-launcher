@@ -2,7 +2,7 @@
   "profiles": {
     "windows-terminal-launcher": {
       "commandName": "Project",
-      "commandLineArgs": "--uninstall --install --profile=\"CMD\" --profile=\"Bash\""
+      "commandLineArgs": "--uninstall --install --profile=\"CMD\" --profile=\"Bash (WSL1)\" --profile=\"Bash (WSL2)\""
     }
   }
 }

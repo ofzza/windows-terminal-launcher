@@ -136,7 +136,8 @@ namespace windows_terminal_launcher {
               string wtlpath = String.Format(@"{0}\windows-terminal-launcher", keypath);
               RegistryKey wtl = this.registryRootKey.CreateSubKey(wtlpath);
 
-              command.SetValue("", String.Format("{0} --profile=\"{1}\" --directory=\"%V\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name));
+              command.SetValue("", String.Format("wt -p \"{0}\" -d \"%V\"", profile.name)); // Run directly
+              //command.SetValue("", String.Format("{0} --profile=\"{1}\" --directory=\"%V\"", System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, profile.name)); // Run using WindowsTerminalCOnfiguration.exe as proxy
               command.SetValue("Position", @"Bottom");
               command.SetValue("Extended", @"");
 
